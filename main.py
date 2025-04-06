@@ -4,13 +4,35 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import re
+import sys
+import traceback
 from datetime import datetime
 
+# Setup debugging
+import logging
+logging.basicConfig(
+    filename='.streamlit/logs/app.log',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+logger.info("============ Application Starting ============")
+
 # Import custom modules
-import data_fetcher as df
-import analysis as al
-import strategist as strat
-import utils
+try:
+    import data_fetcher as df
+    logger.info("Successfully imported data_fetcher")
+    import analysis as al
+    logger.info("Successfully imported analysis")
+    import strategist as strat
+    logger.info("Successfully imported strategist")
+    import utils
+    logger.info("Successfully imported utils")
+except Exception as e:
+    logger.error(f"Error importing modules: {str(e)}")
+    logger.error(traceback.format_exc())
+    st.error(f"Error importing modules: {str(e)}")
+    st.stop()
 
 # Page configuration
 st.set_page_config(
