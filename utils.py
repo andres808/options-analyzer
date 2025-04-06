@@ -215,13 +215,18 @@ def plot_volatility(iv_hv_data):
             subplot_titles=("Implied vs Historical Volatility", "IV-HV Spread")
         )
         
-        # Convert to percentage for display
+        # Clean data before plotting to prevent errors
         if 'HV' in iv_hv_data.columns:
+            # Clean HV data
+            hv_values = iv_hv_data['HV'].copy()
+            hv_values = hv_values.replace([np.inf, -np.inf], np.nan)
+            iv_hv_data['HV_clean'] = hv_values.fillna(0.15)  # Default value
+            
             # Add historical volatility
             fig.add_trace(
                 go.Scatter(
                     x=iv_hv_data.index,
-                    y=iv_hv_data['HV'] * 100,  # Convert to percentage
+                    y=iv_hv_data['HV_clean'] * 100,  # Convert to percentage
                     mode='lines',
                     name='Historical Volatility',
                     line=dict(color='blue', width=2)
@@ -230,13 +235,20 @@ def plot_volatility(iv_hv_data):
             )
         else:
             logger.warning("HV column not found in iv_hv_data")
+            # Add default HV column to prevent errors
+            iv_hv_data['HV_clean'] = 0.15
         
         if 'IV' in iv_hv_data.columns:
+            # Clean IV data
+            iv_values = iv_hv_data['IV'].copy()
+            iv_values = iv_values.replace([np.inf, -np.inf], np.nan)
+            iv_hv_data['IV_clean'] = iv_values.fillna(0.2)  # Default value
+            
             # Add implied volatility
             fig.add_trace(
                 go.Scatter(
                     x=iv_hv_data.index,
-                    y=iv_hv_data['IV'] * 100,  # Convert to percentage
+                    y=iv_hv_data['IV_clean'] * 100,  # Convert to percentage
                     mode='lines',
                     name='Implied Volatility',
                     line=dict(color='red', width=2)
@@ -245,32 +257,60 @@ def plot_volatility(iv_hv_data):
             )
         else:
             logger.warning("IV column not found in iv_hv_data")
+            # Add default IV column to prevent errors
+            iv_hv_data['IV_clean'] = 0.2
         
-        if 'IV_HV_Spread' in iv_hv_data.columns:
-            # Add IV-HV spread as a bar chart
-            fig.add_trace(
-                go.Bar(
-                    x=iv_hv_data.index,
-                    y=iv_hv_data['IV_HV_Spread'] * 100,  # Convert to percentage
-                    name='IV-HV Spread',
-                    marker=dict(color='rgba(0, 255, 0, 0.3)')
-                ),
-                row=2, col=1
-            )
+        # Recalculate spread using clean data if needed
+        if 'IV_HV_Spread' not in iv_hv_data.columns or iv_hv_data['IV_HV_Spread'].isna().any():
+            logger.warning("Recalculating IV_HV_Spread with clean data")
+            iv_hv_data['IV_HV_Spread_clean'] = iv_hv_data['IV_clean'] - iv_hv_data['HV_clean']
         else:
-            logger.warning("IV_HV_Spread column not found in iv_hv_data")
+            # Clean existing spread
+            spread_values = iv_hv_data['IV_HV_Spread'].copy()
+            spread_values = spread_values.replace([np.inf, -np.inf], np.nan)
+            iv_hv_data['IV_HV_Spread_clean'] = spread_values.fillna(0.05)  # Default value
+        
+        # Add IV-HV spread as a bar chart
+        fig.add_trace(
+            go.Bar(
+                x=iv_hv_data.index,
+                y=iv_hv_data['IV_HV_Spread_clean'] * 100,  # Convert to percentage
+                name='IV-HV Spread',
+                marker=dict(
+                    color=iv_hv_data['IV_HV_Spread_clean'].apply(
+                        lambda x: 'rgba(0, 255, 0, 0.5)' if x > 0 else 'rgba(255, 0, 0, 0.5)'
+                    )
+                )
+            ),
+            row=2, col=1
+        )
         
         # Update layout
         fig.update_layout(
             height=400,
             margin=dict(l=0, r=0, t=40, b=0),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            hovermode="x unified"  # Shows all data at the same x-coordinate on hover
         )
         
         # Add zero line for the spread
         fig.add_hline(
             y=0, 
             line=dict(color="black", width=1, dash="dash"),
+            row=2, col=1
+        )
+        
+        # Set y-axis ranges to reasonable values
+        fig.update_yaxes(
+            title="Volatility (%)",
+            range=[0, max(iv_hv_data['IV_clean'].max(), iv_hv_data['HV_clean'].max()) * 100 * 1.1],
+            row=1, col=1
+        )
+        
+        fig.update_yaxes(
+            title="Spread (%)",
+            range=[min(iv_hv_data['IV_HV_Spread_clean'].min() * 100 * 1.5, -2), 
+                  max(iv_hv_data['IV_HV_Spread_clean'].max() * 100 * 1.5, 2)],
             row=2, col=1
         )
         
@@ -281,7 +321,7 @@ def plot_volatility(iv_hv_data):
         logger.error(f"Error creating volatility chart: {str(e)}")
         logger.error(traceback.format_exc())
         
-        # Return a simple error chart
+        # Return a simple error chart with more details for debugging
         fig = go.Figure()
         fig.add_annotation(
             x=0.5,
@@ -290,6 +330,20 @@ def plot_volatility(iv_hv_data):
             showarrow=False,
             font=dict(size=16)
         )
+        
+        if iv_hv_data is not None:
+            # Add additional info about the data that caused the error
+            try:
+                data_info = f"Columns: {list(iv_hv_data.columns)}, Shape: {iv_hv_data.shape}"
+                fig.add_annotation(
+                    x=0.5,
+                    y=0.4,
+                    text=data_info,
+                    showarrow=False,
+                    font=dict(size=12)
+                )
+            except:
+                pass
         
         fig.update_layout(
             title="Implied vs Historical Volatility (Error)",

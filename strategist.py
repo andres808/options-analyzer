@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
+import traceback
 
 # Define strategy templates
 STRATEGIES = {
@@ -149,6 +150,17 @@ STRATEGIES = {
 
 def recommend_strategy(price_history, fundamentals, selected_option, option_type, outlook, risk_profile):
     """Recommend an options strategy based on market outlook and risk profile"""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Log inputs for debugging
+    logger.info(f"Strategy inputs - outlook: {outlook}, risk_profile: {risk_profile}, option_type: {option_type}")
+    
+    # Validate option_type and provide a default if needed
+    if option_type not in ['call', 'put']:
+        logger.warning(f"Invalid option_type: {option_type}, defaulting to 'call'")
+        option_type = 'call'
+    
     # Default strategy for fallback
     default_strategy = STRATEGIES["neutral_low_risk"]
     
@@ -163,6 +175,7 @@ def recommend_strategy(price_history, fundamentals, selected_option, option_type
     
     # Build strategy key
     strategy_key = f"{outlook}_{risk_level}"
+    logger.info(f"Strategy key: {strategy_key}")
     
     # Handle income strategies separately for more conservative outlooks
     if risk_profile == "Conservative" and outlook in ["bullish", "neutral"]:
@@ -173,29 +186,58 @@ def recommend_strategy(price_history, fundamentals, selected_option, option_type
     
     # Get strategy or default to neutral
     strategy = STRATEGIES.get(strategy_key, default_strategy)
+    logger.info(f"Selected strategy: {strategy['name']}")
     
     # Add additional context based on the selected option
     strategy_with_context = strategy.copy()
     
+    # Safely extract values from selected_option with defaults
+    try:
+        strike = selected_option.get("strike", 0)
+        last_price = selected_option.get("lastPrice", 0)
+    except (AttributeError, TypeError) as e:
+        logger.error(f"Error extracting option values: {e}")
+        # Provide default values if selected_option is None or not a dict
+        strike = 0
+        last_price = 0
+    
     # Add specific option details
     strategy_with_context["selected_option"] = {
-        "strike": selected_option["strike"],
+        "strike": strike,
         "expiry": "Selected expiration date",  # Could be more specific with actual date
-        "premium": selected_option["lastPrice"],
+        "premium": last_price,
         "type": option_type
     }
     
     # Add specific breakeven calculation if possible
     if strategy["name"] == "Long Call":
-        strategy_with_context["specific_breakeven"] = selected_option["strike"] + selected_option["lastPrice"]
+        strategy_with_context["specific_breakeven"] = strike + last_price
     elif strategy["name"] == "Long Put":
-        strategy_with_context["specific_breakeven"] = selected_option["strike"] - selected_option["lastPrice"]
+        strategy_with_context["specific_breakeven"] = strike - last_price
     
     return strategy_with_context
 
 def generate_payoff_chart(strategy, selected_option, option_type, current_price):
     """Generate a payoff chart for the recommended strategy"""
-    # Define price range for x-axis (20% below and above current price)
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Safely get strike and lastPrice from selected_option
+    try:
+        strike = selected_option.get("strike", current_price)
+        last_price = selected_option.get("lastPrice", current_price * 0.05)  # Default to 5% of current price
+    except (AttributeError, TypeError) as e:
+        logger.error(f"Error extracting option values for payoff chart: {e}")
+        # Provide default values if selected_option is None or not a dict
+        strike = current_price
+        last_price = current_price * 0.05
+    
+    # Validate option_type
+    if option_type not in ['call', 'put']:
+        logger.warning(f"Invalid option_type in payoff chart: {option_type}, defaulting to 'call'")
+        option_type = 'call'
+    
+    # Define price range for x-axis (30% below and above current price)
     price_range = np.linspace(current_price * 0.7, current_price * 1.3, 100)
     
     # Calculate payoff based on strategy
@@ -205,61 +247,60 @@ def generate_payoff_chart(strategy, selected_option, option_type, current_price)
     if strategy_name == "Long Call":
         # For long call: max(0, stock_price - strike) - premium
         for price in price_range:
-            payoff.append(max(0, price - selected_option["strike"]) - selected_option["lastPrice"])
+            payoff.append(max(0, price - strike) - last_price)
     
     elif strategy_name == "Long Put":
         # For long put: max(0, strike - stock_price) - premium
         for price in price_range:
-            payoff.append(max(0, selected_option["strike"] - price) - selected_option["lastPrice"])
+            payoff.append(max(0, strike - price) - last_price)
     
     elif strategy_name == "Bull Call Spread":
         # Simplified bull call spread (assuming strikes are 5% apart)
-        higher_strike = selected_option["strike"] * 1.05
-        spread_cost = selected_option["lastPrice"] * 0.6  # Approximate net cost
+        higher_strike = strike * 1.05
+        spread_cost = last_price * 0.6  # Approximate net cost
         
         for price in price_range:
-            if price <= selected_option["strike"]:
+            if price <= strike:
                 payoff.append(-spread_cost)
             elif price >= higher_strike:
-                payoff.append(higher_strike - selected_option["strike"] - spread_cost)
+                payoff.append(higher_strike - strike - spread_cost)
             else:
-                payoff.append(price - selected_option["strike"] - spread_cost)
+                payoff.append(price - strike - spread_cost)
     
     elif strategy_name == "Bear Put Spread":
         # Simplified bear put spread (assuming strikes are 5% apart)
-        lower_strike = selected_option["strike"] * 0.95
-        spread_cost = selected_option["lastPrice"] * 0.6  # Approximate net cost
+        lower_strike = strike * 0.95
+        spread_cost = last_price * 0.6  # Approximate net cost
         
         for price in price_range:
-            if price >= selected_option["strike"]:
+            if price >= strike:
                 payoff.append(-spread_cost)
             elif price <= lower_strike:
-                payoff.append(selected_option["strike"] - lower_strike - spread_cost)
+                payoff.append(strike - lower_strike - spread_cost)
             else:
-                payoff.append(selected_option["strike"] - price - spread_cost)
+                payoff.append(strike - price - spread_cost)
     
     elif strategy_name == "Covered Call":
         # For covered call: (stock_price - current_price) + premium - max(0, stock_price - strike)
-        premium = selected_option["lastPrice"]
+        premium = last_price
         
         for price in price_range:
             stock_pl = price - current_price
-            option_pl = premium - max(0, price - selected_option["strike"])
+            option_pl = premium - max(0, price - strike)
             payoff.append(stock_pl + option_pl)
     
     elif strategy_name == "Cash-Secured Put":
         # For cash-secured put: premium - max(0, strike - stock_price)
-        premium = selected_option["lastPrice"]
+        premium = last_price
         
         for price in price_range:
-            payoff.append(premium - max(0, selected_option["strike"] - price))
+            payoff.append(premium - max(0, strike - price))
     
     elif strategy_name == "Long Straddle":
         # For long straddle (using selected option as one leg and estimating the other)
-        call_premium = selected_option["lastPrice"]
+        call_premium = last_price
         put_premium = call_premium * 0.9  # Estimate put cost
         total_premium = call_premium + put_premium
-        strike = selected_option["strike"]
         
         for price in price_range:
             call_payoff = max(0, price - strike)
@@ -270,10 +311,10 @@ def generate_payoff_chart(strategy, selected_option, option_type, current_price)
         # Default to single option payoff if strategy not specifically handled
         if option_type == "call":
             for price in price_range:
-                payoff.append(max(0, price - selected_option["strike"]) - selected_option["lastPrice"])
+                payoff.append(max(0, price - strike) - last_price)
         else:  # put
             for price in price_range:
-                payoff.append(max(0, selected_option["strike"] - price) - selected_option["lastPrice"])
+                payoff.append(max(0, strike - price) - last_price)
     
     # Create the chart
     fig = go.Figure()
@@ -319,31 +360,58 @@ def generate_payoff_chart(strategy, selected_option, option_type, current_price)
 
 def render_strategy_card(strategy, selected_option, option_type, ticker, current_price):
     """Render a card with strategy details and payoff chart"""
-    st.subheader(f"Recommended Strategy: {strategy['name']}")
+    import logging
+    logger = logging.getLogger(__name__)
     
-    # Basic strategy information
-    st.write(f"**Description:** {strategy['description']}")
-    
-    # Strategy legs
-    st.write("**Strategy Legs:**")
-    for leg in strategy['legs']:
-        st.write(f"- {leg}")
-    
-    # Risk-reward profile
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write(f"**Maximum Loss:** {strategy['max_loss']}")
-        st.write(f"**Maximum Gain:** {strategy['max_gain']}")
-    
-    with col2:
-        st.write(f"**Breakeven:** {strategy['breakeven']}")
-        if "specific_breakeven" in strategy:
-            st.write(f"**Specific Breakeven:** ${strategy['specific_breakeven']:.2f}")
-    
-    # Payoff chart
-    payoff_chart = generate_payoff_chart(strategy, selected_option, option_type, current_price)
-    st.plotly_chart(payoff_chart, use_container_width=True)
-    
-    # When to use this strategy
-    st.write(f"**Best When:** {strategy['best_when']}")
-    st.write(f"**Risk Profile:** {strategy['risk_profile']}")
+    try:
+        # Safely get strategy name with fallback
+        strategy_name = strategy.get('name', 'Unspecified Strategy')
+        st.subheader(f"Recommended Strategy: {strategy_name}")
+        
+        # Basic strategy information
+        description = strategy.get('description', 'No description available')
+        st.write(f"**Description:** {description}")
+        
+        # Strategy legs with safety check
+        st.write("**Strategy Legs:**")
+        legs = strategy.get('legs', ['Strategy components not specified'])
+        for leg in legs:
+            st.write(f"- {leg}")
+        
+        # Risk-reward profile
+        col1, col2 = st.columns(2)
+        with col1:
+            max_loss = strategy.get('max_loss', 'Unspecified')
+            max_gain = strategy.get('max_gain', 'Unspecified')
+            st.write(f"**Maximum Loss:** {max_loss}")
+            st.write(f"**Maximum Gain:** {max_gain}")
+        
+        with col2:
+            breakeven = strategy.get('breakeven', 'Unspecified')
+            st.write(f"**Breakeven:** {breakeven}")
+            if "specific_breakeven" in strategy:
+                try:
+                    specific_be = float(strategy['specific_breakeven'])
+                    st.write(f"**Specific Breakeven:** ${specific_be:.2f}")
+                except (TypeError, ValueError) as e:
+                    logger.warning(f"Error formatting specific_breakeven: {e}")
+        
+        # Handle missing option_type
+        if option_type not in ['call', 'put']:
+            logger.warning(f"Invalid option_type in render_strategy_card: {option_type}, defaulting to 'call'")
+            option_type = 'call'
+            
+        # Payoff chart
+        payoff_chart = generate_payoff_chart(strategy, selected_option, option_type, current_price)
+        st.plotly_chart(payoff_chart, use_container_width=True)
+        
+        # When to use this strategy
+        best_when = strategy.get('best_when', 'Appropriate market conditions')
+        risk_profile = strategy.get('risk_profile', 'Risk profile not specified')
+        st.write(f"**Best When:** {best_when}")
+        st.write(f"**Risk Profile:** {risk_profile}")
+        
+    except Exception as e:
+        logger.error(f"Error rendering strategy card: {e}")
+        logger.error(traceback.format_exc())
+        st.error(f"Error displaying strategy recommendations. Please try a different ticker or option selection.")
