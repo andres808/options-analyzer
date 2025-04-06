@@ -1,0 +1,141 @@
+DEPLOYING A SMARTER OPTIONS ANALYSIS APP ON REPLIT
+
+This updated guide refines the original walkthrough and adds an automated option‑strategy recommender so your users get actionable insights, not just data. It keeps Streamlit and Replit at the core, but tightens structure, security, and performance.
+
+WHY STREAMLIT + REPLIT
+
+Streamlit: fastest path from Python to a polished dashboard, no JavaScript required.
+
+Replit: instant cloud IDE, built‑in CI/CD pipeline, and free autoscale hosting.
+(If you expect more than ~50 concurrent users or need GPUs, consider Fly.io or Render later.)
+
+PROJECT SKELETON
+.replit            – run command
+replit.nix         – system dependencies (optional)
+requirements.txt   – Python dependencies
+main.py            – Streamlit UI and routing
+data_fetcher.py    – yfinance wrappers + caching
+analysis.py        – machine‑learning model + feature engineering
+strategist.py      – NEW rule engine for strategy suggestions
+utils.py           – common helpers (plots, cache utilities)
+cache/             – Parquet and JSON caches
+model.pkl          – pre‑trained Random‑Forest classifier
+
+ENVIRONMENT CONFIGURATION
+.replit
+run = "streamlit run main.py --server.address 0.0.0.0 --server.port $PORT --server.headless true --server.enableCORS false --server.enableWebsocketCompression false"
+
+requirements.txt (pinned versions)
+streamlit==1.33.0
+pandas==2.1.0
+numpy==1.26.4
+scikit-learn==1.4.0
+yfinance==0.2.36
+plotly==5.20.0
+joblib==1.3.2
+apscheduler==3.10.1
+
+Need Python 3.12?  Add to replit.nix:
+{ pkgs }:
+{
+deps = [ pkgs.python312Full pkgs.python312Packages.pip ];
+}
+
+DATA LAYER (data_fetcher.py)
+
+Added a force_refresh flag so scheduled jobs can bypass cache cleanly.
+
+Switched CSV → Parquet for 5–10× faster I/O and about 60 % smaller footprint.
+
+Wrapped yfinance calls with exponential back‑off to survive rate limits.
+
+Example:
+def get_price_history(ticker, period="1y", interval="1d", force_refresh=False):
+cache_path = get_cache_path(ticker, f"history_{period}_{interval}", ext="parquet")
+if not force_refresh and is_cache_valid(cache_path):
+return pd.read_parquet(cache_path)
+# fetch, then save parquet
+
+MACHINE‑LEARNING LAYER (analysis.py)
+
+Model versioning: hash training parameters; if hash mismatches stored model.pkl, retrain automatically.
+
+Feature vector now includes skewness, kurtosis, and IV‑HV spread to capture volatility regimes.
+
+Example helper:
+def iv_hv_spread(iv, hv):
+return iv - hv
+
+NEW STRATEGY RECOMMENDER (strategist.py)
+The module analyses:
+• Market outlook (bullish / bearish / neutral / volatile) using 20‑day vs 50‑day SMA and IV‑HV spread (>10 % means high vol).
+• Trader risk profile (Conservative / Moderate / Aggressive) from a UI slider.
+• Win probability and moneyness of each contract.
+
+It returns a dictionary with strategy name, rationale, and step‑by‑step legs.
+
+STRATEGIES = {
+"bullish_low_risk": {
+"name": "Bull Call Spread",
+"legs": ["Long Call (ATM)", "Short Call (OTM)"],
+"max_loss": "Net Premium",
+"max_gain": "Spread Width – Net Premium"
+},
+…
+}
+
+def suggest_strategy(outlook, risk):
+if outlook == "bullish":
+return STRATEGIES["covered_call" if risk == "Conservative" else "bullish_low_risk"]
+# fallback → long straddle, etc.
+
+UI ENHANCEMENTS (main.py)
+
+Added risk‑profile selector in the sidebar.
+
+After the user selects a contract, call strategist.suggest_strategy() and render a card showing:
+• Strategy legs
+• Breakeven point(s)
+• Maximum gain / loss
+• Interactive payoff chart overlaying the selected contract
+
+risk = st.select_slider("Risk Tolerance", ["Conservative", "Moderate", "Aggressive"], value="Moderate")
+…
+strategy = strategist.recommend(price_history, fundamentals, selected_option, outlook, risk)
+strategist.render_card(strategy)
+
+BACKGROUND SCHEDULER
+
+Hourly cache refresh moved to utils.schedule_cache_refresh().
+
+Daily model‑drift check retrains if the last retrain is older than 30 days or hold‑out accuracy falls below 70 %.
+
+SECURITY AND RATE‑LIMIT HARDENING
+
+Strip all user inputs with regex ^[A-Z]{1,5}$ to avoid shell injection.
+
+Cache layer throttles to 5 requests per second with an asyncio semaphore.
+
+Use environment variable YF_MAX_RETRIES to tune retry policy.
+
+DEPLOYMENT CHECKLIST
+
+Run locally inside Replit with the Run button.
+
+Connect the Repl to GitHub for version control.
+
+Deploy → Autoscale.  Start with 1 instance (0.5 vCPU, 0.5 GB RAM).  Upgrade if latency exceeds 3 s P95.
+
+Enable Always On if you rely on APScheduler.
+
+Monitor via Replit’s Observability tab.  Set an alert for memory usage above 400 MB.
+
+NEXT STEPS
+
+Add WebAuthn to secure private watchlists.
+
+Integrate Polygon.io for real‑time greeks (paid API).
+
+Fine‑tune the model on a real option‑outcome dataset (e.g., OptionMetrics).
+
+Export strategy PDFs via pdfkit for client presentations.
