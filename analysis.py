@@ -114,7 +114,7 @@ def calculate_iv_hv_spread(ticker, price_history, options_data):
 def create_fallback_iv_hv_data(price_history, historical_volatility=None):
     """Create fallback IV-HV data when real data can't be calculated"""
     logger = logging.getLogger(__name__)
-    logger.warning("Creating fallback IV-HV data")
+    logger.warning("Creating fallback IV-HV data with only historical volatility")
     
     # Get the last 30 trading days
     if len(price_history) < 30:
@@ -127,32 +127,57 @@ def create_fallback_iv_hv_data(price_history, historical_volatility=None):
     iv_hv_data = pd.DataFrame(index=last_dates)
     iv_hv_data['Date'] = iv_hv_data.index
     
-    # Generate historical volatility if not provided
-    if historical_volatility is None or len(historical_volatility) == 0:
-        # Generate synthetic HV based on price movements
-        returns = price_history['Close'].pct_change().iloc[-30:]
-        hv_values = np.ones(len(last_dates)) * returns.std() * np.sqrt(252)
-    elif len(historical_volatility) < len(last_dates):
-        # Use available HV and pad
-        hv_values = np.zeros(len(last_dates))
-        available_hv = historical_volatility.iloc[-len(historical_volatility):].values
-        hv_values[-len(available_hv):] = available_hv
+    # Use provided historical volatility if available
+    if historical_volatility is not None and not historical_volatility.empty:
+        # Get the overlapping dates
+        overlap_dates = iv_hv_data.index.intersection(historical_volatility.index)
+        
+        if not overlap_dates.empty:
+            # Use the actual historical volatility for overlapping dates
+            iv_hv_data['HV'] = np.nan
+            for date in overlap_dates:
+                iv_hv_data.loc[date, 'HV'] = historical_volatility.loc[date]
+                
+            # Forward fill any remaining NaN values
+            iv_hv_data['HV'] = iv_hv_data['HV'].fillna(method='ffill')
+            # Backward fill any remaining NaN values at the beginning
+            iv_hv_data['HV'] = iv_hv_data['HV'].fillna(method='bfill')
+            
+            # If still have NaNs, use the mean of available values
+            if iv_hv_data['HV'].isna().any() and not iv_hv_data['HV'].isna().all():
+                mean_hv = iv_hv_data['HV'].mean()
+                iv_hv_data['HV'] = iv_hv_data['HV'].fillna(mean_hv)
+            # If all are NaN, calculate from returns
+            elif iv_hv_data['HV'].isna().all():
+                returns = price_history['Close'].pct_change().iloc[-30:].dropna()
+                if not returns.empty:
+                    std_dev = returns.std() * np.sqrt(252)  # Annualize
+                    iv_hv_data['HV'] = std_dev
+                else:
+                    iv_hv_data['HV'] = 0.15  # Default value if no returns data
+        else:
+            # No overlapping dates, calculate from returns
+            returns = price_history['Close'].pct_change().iloc[-30:].dropna()
+            if not returns.empty:
+                std_dev = returns.std() * np.sqrt(252)  # Annualize
+                iv_hv_data['HV'] = std_dev
+            else:
+                iv_hv_data['HV'] = 0.15  # Default value if no returns data
     else:
-        # Use the last n values from historical_volatility
-        hv_values = historical_volatility.iloc[-len(last_dates):].values
+        # Calculate historical volatility from price data
+        returns = price_history['Close'].pct_change().iloc[-30:].dropna()
+        if not returns.empty:
+            std_dev = returns.std() * np.sqrt(252)  # Annualize
+            iv_hv_data['HV'] = std_dev
+        else:
+            iv_hv_data['HV'] = 0.15  # Default value if no returns data
     
-    # Clean HV values - replace NaNs and ensure positive values
-    hv_values = np.nan_to_num(hv_values, nan=0.15)
-    hv_values = np.clip(hv_values, 0.1, 0.5)  # Reasonable volatility range
+    # Market implied volatility data is not available
+    iv_hv_data['IV'] = np.nan
+    iv_hv_data['IV_HV_Spread'] = np.nan
     
-    # Generate implied volatility values slightly higher than HV (common in markets)
-    iv_values = hv_values * np.random.uniform(1.05, 1.3, len(hv_values))
-    
-    # Populate the dataframe
-    iv_hv_data['HV'] = hv_values
-    iv_hv_data['IV'] = iv_values
-    iv_hv_data['IV_HV_Spread'] = iv_hv_data['IV'] - iv_hv_data['HV']
-    
+    # We're returning a dataframe with only historical volatility (HV) data
+    # IV and IV_HV_Spread will be NaN to indicate they're not available
     return iv_hv_data
 
 def iv_hv_spread(iv, hv):

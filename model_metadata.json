@@ -1,0 +1,1 @@
+{"timestamp":{"0":"2025-04-06T04:24:23.950172"},"accuracy":{"0":0.9173553719},"model_hash":{"0":"f5ae819d41871cfa6317e0c406a864a6"},"features":{"0":["returns_1d","returns_5d","returns_20d","volatility_20d","sma_20","sma_50","sma_ratio","volume_change","volume_ma_ratio","skewness","kurtosis"]}}

@@ -21,27 +21,55 @@ def initialize_scheduler():
     """Initialize the background scheduler for cache refresh and model retraining"""
     global scheduler
     
+    # Check if scheduler already exists and is running
+    if scheduler is not None and scheduler.running:
+        logger.info("Scheduler already running, not initializing again")
+        return
+        
+    # Create new scheduler or reuse existing one
     if scheduler is None:
         scheduler = BackgroundScheduler()
+    
+    # Try to remove existing jobs first to avoid conflicts
+    try:
+        scheduler.remove_job('cache_refresh')
+        logger.info("Removed existing cache_refresh job")
+    except:
+        pass
         
-        # Add scheduled jobs
-        scheduler.add_job(
-            refresh_cache_for_popular_tickers,
-            'interval',
-            hours=1,
-            id='cache_refresh'
-        )
-        
-        scheduler.add_job(
-            check_model_drift,
-            'interval',
-            days=1,
-            id='model_check'
-        )
-        
-        # Start the scheduler if not already running
-        if not scheduler.running:
-            scheduler.start()
+    try:
+        scheduler.remove_job('model_check')
+        logger.info("Removed existing model_check job")
+    except:
+        pass
+    
+    # Add scheduled jobs with new IDs to avoid conflicts
+    job_id_suffix = str(int(time.time()))
+    
+    # Add job for cache refresh
+    scheduler.add_job(
+        refresh_cache_for_popular_tickers,
+        'interval',
+        hours=1,
+        id=f'cache_refresh_{job_id_suffix}'
+    )
+    logger.info(f"Added cache refresh job with ID: cache_refresh_{job_id_suffix}")
+    
+    # Add job for model checking
+    scheduler.add_job(
+        check_model_drift,
+        'interval',
+        days=1,
+        id=f'model_check_{job_id_suffix}'
+    )
+    logger.info(f"Added model check job with ID: model_check_{job_id_suffix}")
+    
+    # Start the scheduler if not already running
+    if not scheduler.running:
+        logger.info("Starting scheduler")
+        scheduler.start()
+    
+    logger.info("Scheduler initialization complete")
 
 def refresh_cache_for_popular_tickers():
     """Refresh cache for popular tickers on a schedule"""
@@ -194,7 +222,7 @@ def plot_volatility(iv_hv_data):
             )
             
             fig.update_layout(
-                title="Implied vs Historical Volatility",
+                title="Volatility Analysis",
                 height=400,
                 margin=dict(l=0, r=0, t=40, b=0)
             )
@@ -205,22 +233,28 @@ def plot_volatility(iv_hv_data):
         logger.info(f"IV-HV data shape: {iv_hv_data.shape}, columns: {list(iv_hv_data.columns)}")
         logger.info(f"IV-HV data index type: {type(iv_hv_data.index)}")
         
-        # Create subplot grid with shared x-axis
-        fig = make_subplots(
-            rows=2, 
-            cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.03,
-            row_heights=[0.7, 0.3],
-            subplot_titles=("Implied vs Historical Volatility", "IV-HV Spread")
-        )
+        # Check if we have IV data - determine if we need one or two plots
+        has_iv_data = 'IV' in iv_hv_data.columns and not iv_hv_data['IV'].isna().all()
+        has_hv_data = 'HV' in iv_hv_data.columns and not iv_hv_data['HV'].isna().all()
+        has_spread_data = 'IV_HV_Spread' in iv_hv_data.columns and not iv_hv_data['IV_HV_Spread'].isna().all()
         
-        # Clean data before plotting to prevent errors
-        if 'HV' in iv_hv_data.columns:
+        logger.info(f"Data availability - IV: {has_iv_data}, HV: {has_hv_data}, Spread: {has_spread_data}")
+        
+        if has_iv_data and has_hv_data:
+            # We have both IV and HV data - create a comparison chart with both subplots
+            fig = make_subplots(
+                rows=2, 
+                cols=1,
+                shared_xaxes=True,
+                vertical_spacing=0.03,
+                row_heights=[0.7, 0.3],
+                subplot_titles=("Implied vs Historical Volatility", "IV-HV Spread")
+            )
+            
             # Clean HV data
             hv_values = iv_hv_data['HV'].copy()
             hv_values = hv_values.replace([np.inf, -np.inf], np.nan)
-            iv_hv_data['HV_clean'] = hv_values.fillna(0.15)  # Default value
+            iv_hv_data['HV_clean'] = hv_values.fillna(method='ffill').fillna(method='bfill')
             
             # Add historical volatility
             fig.add_trace(
@@ -233,16 +267,11 @@ def plot_volatility(iv_hv_data):
                 ),
                 row=1, col=1
             )
-        else:
-            logger.warning("HV column not found in iv_hv_data")
-            # Add default HV column to prevent errors
-            iv_hv_data['HV_clean'] = 0.15
-        
-        if 'IV' in iv_hv_data.columns:
+            
             # Clean IV data
             iv_values = iv_hv_data['IV'].copy()
             iv_values = iv_values.replace([np.inf, -np.inf], np.nan)
-            iv_hv_data['IV_clean'] = iv_values.fillna(0.2)  # Default value
+            iv_hv_data['IV_clean'] = iv_values.fillna(method='ffill').fillna(method='bfill')
             
             # Add implied volatility
             fig.add_trace(
@@ -255,63 +284,111 @@ def plot_volatility(iv_hv_data):
                 ),
                 row=1, col=1
             )
-        else:
-            logger.warning("IV column not found in iv_hv_data")
-            # Add default IV column to prevent errors
-            iv_hv_data['IV_clean'] = 0.2
-        
-        # Recalculate spread using clean data if needed
-        if 'IV_HV_Spread' not in iv_hv_data.columns or iv_hv_data['IV_HV_Spread'].isna().any():
-            logger.warning("Recalculating IV_HV_Spread with clean data")
-            iv_hv_data['IV_HV_Spread_clean'] = iv_hv_data['IV_clean'] - iv_hv_data['HV_clean']
-        else:
-            # Clean existing spread
-            spread_values = iv_hv_data['IV_HV_Spread'].copy()
-            spread_values = spread_values.replace([np.inf, -np.inf], np.nan)
-            iv_hv_data['IV_HV_Spread_clean'] = spread_values.fillna(0.05)  # Default value
-        
-        # Add IV-HV spread as a bar chart
-        fig.add_trace(
-            go.Bar(
-                x=iv_hv_data.index,
-                y=iv_hv_data['IV_HV_Spread_clean'] * 100,  # Convert to percentage
-                name='IV-HV Spread',
-                marker=dict(
-                    color=iv_hv_data['IV_HV_Spread_clean'].apply(
-                        lambda x: 'rgba(0, 255, 0, 0.5)' if x > 0 else 'rgba(255, 0, 0, 0.5)'
+            
+            # Recalculate spread using clean data if needed
+            if has_spread_data:
+                spread_values = iv_hv_data['IV_HV_Spread'].copy()
+                spread_values = spread_values.replace([np.inf, -np.inf], np.nan)
+                iv_hv_data['IV_HV_Spread_clean'] = spread_values.fillna(method='ffill').fillna(method='bfill')
+            else:
+                iv_hv_data['IV_HV_Spread_clean'] = iv_hv_data['IV_clean'] - iv_hv_data['HV_clean']
+            
+            # Add IV-HV spread as a bar chart
+            fig.add_trace(
+                go.Bar(
+                    x=iv_hv_data.index,
+                    y=iv_hv_data['IV_HV_Spread_clean'] * 100,  # Convert to percentage
+                    name='IV-HV Spread',
+                    marker=dict(
+                        color=iv_hv_data['IV_HV_Spread_clean'].apply(
+                            lambda x: 'rgba(0, 255, 0, 0.5)' if x > 0 else 'rgba(255, 0, 0, 0.5)'
+                        )
                     )
+                ),
+                row=2, col=1
+            )
+            
+            # Add zero line for the spread
+            fig.add_hline(
+                y=0, 
+                line=dict(color="black", width=1, dash="dash"),
+                row=2, col=1
+            )
+            
+            # Set y-axis ranges to reasonable values for volatility (top plot)
+            fig.update_yaxes(
+                title="Volatility (%)",
+                range=[0, max(iv_hv_data['IV_clean'].max(), iv_hv_data['HV_clean'].max()) * 100 * 1.1],
+                row=1, col=1
+            )
+            
+            # Set y-axis ranges for spread (bottom plot)
+            fig.update_yaxes(
+                title="Spread (%)",
+                range=[min(iv_hv_data['IV_HV_Spread_clean'].min() * 100 * 1.5, -2), 
+                      max(iv_hv_data['IV_HV_Spread_clean'].max() * 100 * 1.5, 2)],
+                row=2, col=1
+            )
+            
+        elif has_hv_data:
+            # We only have historical volatility data
+            fig = go.Figure()
+            
+            # Clean HV data
+            hv_values = iv_hv_data['HV'].copy()
+            hv_values = hv_values.replace([np.inf, -np.inf], np.nan)
+            clean_hv = hv_values.fillna(method='ffill').fillna(method='bfill')
+            
+            # Add historical volatility
+            fig.add_trace(
+                go.Scatter(
+                    x=iv_hv_data.index,
+                    y=clean_hv * 100,  # Convert to percentage
+                    mode='lines',
+                    name='Historical Volatility',
+                    line=dict(color='blue', width=2)
                 )
-            ),
-            row=2, col=1
-        )
+            )
+            
+            # Add note about missing IV data
+            fig.add_annotation(
+                x=0.5,
+                y=0.9,
+                xref="paper",
+                yref="paper",
+                text="Implied Volatility data not available - showing Historical Volatility only",
+                showarrow=False,
+                font=dict(size=12)
+            )
+            
+            # Set y-axis range
+            fig.update_yaxes(
+                title="Historical Volatility (%)",
+                range=[0, clean_hv.max() * 100 * 1.1]
+            )
+            
+            # Set title
+            fig.update_layout(title="Historical Volatility")
+            
+        else:
+            # No volatility data at all
+            fig = go.Figure()
+            fig.add_annotation(
+                x=0.5,
+                y=0.5,
+                text="No volatility data available for this ticker",
+                showarrow=False,
+                font=dict(size=16)
+            )
+            
+            fig.update_layout(title="Volatility Analysis")
         
-        # Update layout
+        # Common layout settings
         fig.update_layout(
             height=400,
             margin=dict(l=0, r=0, t=40, b=0),
             legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
             hovermode="x unified"  # Shows all data at the same x-coordinate on hover
-        )
-        
-        # Add zero line for the spread
-        fig.add_hline(
-            y=0, 
-            line=dict(color="black", width=1, dash="dash"),
-            row=2, col=1
-        )
-        
-        # Set y-axis ranges to reasonable values
-        fig.update_yaxes(
-            title="Volatility (%)",
-            range=[0, max(iv_hv_data['IV_clean'].max(), iv_hv_data['HV_clean'].max()) * 100 * 1.1],
-            row=1, col=1
-        )
-        
-        fig.update_yaxes(
-            title="Spread (%)",
-            range=[min(iv_hv_data['IV_HV_Spread_clean'].min() * 100 * 1.5, -2), 
-                  max(iv_hv_data['IV_HV_Spread_clean'].max() * 100 * 1.5, 2)],
-            row=2, col=1
         )
         
         logger.info("Successfully created volatility chart")

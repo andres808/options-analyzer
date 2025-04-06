@@ -147,8 +147,9 @@ try:
     st.header("Options Analysis")
     
     # Check if options data is available
-    if not options_data or (len(options_data.get('calls', [])) == 0 and len(options_data.get('puts', [])) == 0):
-        st.warning(f"No options data available for {ticker}. Try another ticker.")
+    if not options_data or not options_data.get('expiry_dates'):
+        st.warning(f"No options data available for {ticker}. Try popular tickers like AAPL, MSFT, AMZN, or SPY which typically have active options markets.")
+        st.info("Many stocks don't have options trading or Yahoo Finance may not provide options data for them.")
     else:
         # Display available expiration dates
         expiry_dates = options_data.get('expiry_dates', [])
@@ -282,13 +283,31 @@ try:
     # Volatility analysis section
     st.header("Volatility Analysis")
     
-    # Calculate and display IV-HV spread
-    try:
-        iv_hv_data = al.calculate_iv_hv_spread(ticker, price_history, options_data)
-        fig = utils.plot_volatility(iv_hv_data)
-        st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error calculating volatility data: {e}")
+    # Check if options data is available for volatility analysis
+    if not options_data or not options_data.get('expiry_dates'):
+        st.info("Implied volatility analysis requires options data. Try popular tickers like AAPL, MSFT, AMZN, or SPY.")
+        
+        # Display only historical volatility
+        hist_vol = df.get_historical_volatility(price_history)
+        if not hist_vol.empty:
+            st.subheader("Historical Volatility")
+            hist_vol_df = pd.DataFrame({'Date': hist_vol.index, 'HV': hist_vol.values * 100})
+            st.line_chart(hist_vol_df.set_index('Date'))
+            st.caption("Historical volatility based on 20-day rolling standard deviation of returns, annualized.")
+    else:
+        # Calculate and display IV-HV spread
+        try:
+            iv_hv_data = al.calculate_iv_hv_spread(ticker, price_history, options_data)
+            fig = utils.plot_volatility(iv_hv_data)
+            st.plotly_chart(fig, use_container_width=True)
+            st.caption("Implied volatility from options pricing vs historical volatility from price movements.")
+        except Exception as e:
+            st.error(f"Error calculating volatility data: {str(e)}")
+            st.info("Try another ticker with more active options trading.")
+            
+            # Log the full error for debugging
+            logger.error(f"Volatility calculation error: {str(e)}")
+            logger.error(traceback.format_exc())
 
 except Exception as e:
     st.error(f"An error occurred: {str(e)}")
