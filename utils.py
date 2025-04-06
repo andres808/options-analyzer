@@ -88,78 +88,91 @@ def check_model_drift():
 
 def plot_price_history(price_history, ticker):
     """Create an interactive price chart with volume"""
-    # Create a candlestick chart
-    fig = go.Figure()
+    # Create subplot grid with shared x-axis
+    from plotly.subplots import make_subplots
+    
+    fig = make_subplots(
+        rows=2, 
+        cols=1, 
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.7, 0.3],
+        subplot_titles=(f"{ticker} Stock Price", "Volume")
+    )
     
     # Add candlestick trace
-    fig.add_trace(go.Candlestick(
-        x=price_history.index,
-        open=price_history['Open'],
-        high=price_history['High'],
-        low=price_history['Low'],
-        close=price_history['Close'],
-        name=f"{ticker} Price"
-    ))
+    fig.add_trace(
+        go.Candlestick(
+            x=price_history.index,
+            open=price_history['Open'],
+            high=price_history['High'],
+            low=price_history['Low'],
+            close=price_history['Close'],
+            name=f"{ticker} Price"
+        ),
+        row=1, col=1
+    )
     
-    # Add volume as bar chart on secondary y-axis
-    fig.add_trace(go.Bar(
-        x=price_history.index,
-        y=price_history['Volume'],
-        name='Volume',
-        marker=dict(color='rgba(100, 100, 255, 0.3)'),
-        yaxis='y2'
-    ))
+    # Add volume as bar chart
+    fig.add_trace(
+        go.Bar(
+            x=price_history.index,
+            y=price_history['Volume'],
+            name='Volume',
+            marker=dict(color='rgba(100, 100, 255, 0.3)')
+        ),
+        row=2, col=1
+    )
     
     # Add moving averages
     price_history['SMA20'] = price_history['Close'].rolling(window=20).mean()
     price_history['SMA50'] = price_history['Close'].rolling(window=50).mean()
     
-    fig.add_trace(go.Scatter(
-        x=price_history.index,
-        y=price_history['SMA20'],
-        name='20-day SMA',
-        line=dict(color='rgba(255, 165, 0, 0.8)', width=1.5)
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=price_history.index,
+            y=price_history['SMA20'],
+            name='20-day SMA',
+            line=dict(color='rgba(255, 165, 0, 0.8)', width=1.5)
+        ),
+        row=1, col=1
+    )
     
-    fig.add_trace(go.Scatter(
-        x=price_history.index,
-        y=price_history['SMA50'],
-        name='50-day SMA',
-        line=dict(color='rgba(255, 0, 0, 0.8)', width=1.5)
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=price_history.index,
+            y=price_history['SMA50'],
+            name='50-day SMA',
+            line=dict(color='rgba(255, 0, 0, 0.8)', width=1.5)
+        ),
+        row=1, col=1
+    )
     
     # Update layout
     fig.update_layout(
-        title=f"{ticker} Stock Price",
-        xaxis_title="Date",
-        yaxis_title="Price ($)",
         height=500,
         margin=dict(l=0, r=0, t=40, b=0),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
         xaxis_rangeslider_visible=False,
-        yaxis2=dict(
-            title="Volume",
-            overlaying="y",
-            side="right",
-            showgrid=False
-        )
     )
     
-    # Update y-axes
+    # Update y-axis ranges
     fig.update_yaxes(
         range=[price_history['Low'].min() * 0.95, price_history['High'].max() * 1.05],
-        secondary_y=False
+        row=1, col=1
     )
     
     fig.update_yaxes(
         range=[0, price_history['Volume'].max() * 5],
-        secondary_y=True
+        row=2, col=1
     )
     
     return fig
 
 def plot_volatility(iv_hv_data):
-    """Create a volatility comparison chart"""
+    """Create a volatility comparison chart using subplots"""
+    from plotly.subplots import make_subplots
+    
     if iv_hv_data is None:
         # Create an empty chart with a message
         fig = go.Figure()
@@ -179,52 +192,63 @@ def plot_volatility(iv_hv_data):
         
         return fig
     
-    # Create the figure
-    fig = go.Figure()
+    # Create subplot grid with shared x-axis
+    fig = make_subplots(
+        rows=2, 
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.03,
+        row_heights=[0.7, 0.3],
+        subplot_titles=("Implied vs Historical Volatility", "IV-HV Spread")
+    )
     
     # Add historical volatility
-    fig.add_trace(go.Scatter(
-        x=iv_hv_data.index,
-        y=iv_hv_data['HV'] * 100,  # Convert to percentage
-        mode='lines',
-        name='Historical Volatility',
-        line=dict(color='blue', width=2)
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=iv_hv_data.index,
+            y=iv_hv_data['HV'] * 100,  # Convert to percentage
+            mode='lines',
+            name='Historical Volatility',
+            line=dict(color='blue', width=2)
+        ),
+        row=1, col=1
+    )
     
     # Add implied volatility
-    fig.add_trace(go.Scatter(
-        x=iv_hv_data.index,
-        y=iv_hv_data['IV'] * 100,  # Convert to percentage
-        mode='lines',
-        name='Implied Volatility',
-        line=dict(color='red', width=2)
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=iv_hv_data.index,
+            y=iv_hv_data['IV'] * 100,  # Convert to percentage
+            mode='lines',
+            name='Implied Volatility',
+            line=dict(color='red', width=2)
+        ),
+        row=1, col=1
+    )
     
     # Add IV-HV spread as a bar chart
-    fig.add_trace(go.Bar(
-        x=iv_hv_data.index,
-        y=iv_hv_data['IV_HV_Spread'] * 100,  # Convert to percentage
-        name='IV-HV Spread',
-        marker=dict(color='rgba(0, 255, 0, 0.3)'),
-        yaxis='y2'
-    ))
+    fig.add_trace(
+        go.Bar(
+            x=iv_hv_data.index,
+            y=iv_hv_data['IV_HV_Spread'] * 100,  # Convert to percentage
+            name='IV-HV Spread',
+            marker=dict(color='rgba(0, 255, 0, 0.3)')
+        ),
+        row=2, col=1
+    )
     
     # Update layout
     fig.update_layout(
-        title="Implied vs Historical Volatility",
-        xaxis_title="Date",
-        yaxis_title="Volatility (%)",
         height=400,
         margin=dict(l=0, r=0, t=40, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        yaxis2=dict(
-            title="IV-HV Spread (%)",
-            overlaying="y",
-            side="right",
-            zeroline=True,
-            zerolinecolor="black",
-            zerolinewidth=1
-        )
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    
+    # Add zero line for the spread
+    fig.add_hline(
+        y=0, 
+        line=dict(color="black", width=1, dash="dash"),
+        row=2, col=1
     )
     
     return fig

@@ -117,9 +117,24 @@ def get_options_chain(ticker, force_refresh=False):
             puts = stock.option_chain(expiry).puts
             
             # Convert DataFrames to dictionaries for JSON serialization
+            # First, convert any Timestamp objects to string format
+            calls_records = []
+            for record in calls.to_dict("records"):
+                for key, value in list(record.items()):
+                    if isinstance(value, pd.Timestamp):
+                        record[key] = value.strftime('%Y-%m-%d')
+                calls_records.append(record)
+                
+            puts_records = []
+            for record in puts.to_dict("records"):
+                for key, value in list(record.items()):
+                    if isinstance(value, pd.Timestamp):
+                        record[key] = value.strftime('%Y-%m-%d')
+                puts_records.append(record)
+                
             options_data["options"][expiry] = {
-                "calls": calls.to_dict("records"),
-                "puts": puts.to_dict("records")
+                "calls": calls_records,
+                "puts": puts_records
             }
         
         # Save to cache
