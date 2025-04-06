@@ -7,6 +7,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import time
 import random
 import traceback
+import logging
+
+# Setup logging
+logger = logging.getLogger(__name__)
 
 # Import custom modules
 # Using relative imports to avoid circular dependencies
@@ -172,86 +176,128 @@ def plot_price_history(price_history, ticker):
 def plot_volatility(iv_hv_data):
     """Create a volatility comparison chart using subplots"""
     from plotly.subplots import make_subplots
+    import logging
     
-    if iv_hv_data is None:
-        # Create an empty chart with a message
+    logger = logging.getLogger(__name__)
+    
+    try:
+        if iv_hv_data is None:
+            # Create an empty chart with a message
+            logger.warning("Volatility data is None, creating empty chart")
+            fig = go.Figure()
+            fig.add_annotation(
+                x=0.5,
+                y=0.5,
+                text="Volatility data not available",
+                showarrow=False,
+                font=dict(size=20)
+            )
+            
+            fig.update_layout(
+                title="Implied vs Historical Volatility",
+                height=400,
+                margin=dict(l=0, r=0, t=40, b=0)
+            )
+            
+            return fig
+        
+        # Log the structure of the data for debugging
+        logger.info(f"IV-HV data shape: {iv_hv_data.shape}, columns: {list(iv_hv_data.columns)}")
+        logger.info(f"IV-HV data index type: {type(iv_hv_data.index)}")
+        
+        # Create subplot grid with shared x-axis
+        fig = make_subplots(
+            rows=2, 
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.03,
+            row_heights=[0.7, 0.3],
+            subplot_titles=("Implied vs Historical Volatility", "IV-HV Spread")
+        )
+        
+        # Convert to percentage for display
+        if 'HV' in iv_hv_data.columns:
+            # Add historical volatility
+            fig.add_trace(
+                go.Scatter(
+                    x=iv_hv_data.index,
+                    y=iv_hv_data['HV'] * 100,  # Convert to percentage
+                    mode='lines',
+                    name='Historical Volatility',
+                    line=dict(color='blue', width=2)
+                ),
+                row=1, col=1
+            )
+        else:
+            logger.warning("HV column not found in iv_hv_data")
+        
+        if 'IV' in iv_hv_data.columns:
+            # Add implied volatility
+            fig.add_trace(
+                go.Scatter(
+                    x=iv_hv_data.index,
+                    y=iv_hv_data['IV'] * 100,  # Convert to percentage
+                    mode='lines',
+                    name='Implied Volatility',
+                    line=dict(color='red', width=2)
+                ),
+                row=1, col=1
+            )
+        else:
+            logger.warning("IV column not found in iv_hv_data")
+        
+        if 'IV_HV_Spread' in iv_hv_data.columns:
+            # Add IV-HV spread as a bar chart
+            fig.add_trace(
+                go.Bar(
+                    x=iv_hv_data.index,
+                    y=iv_hv_data['IV_HV_Spread'] * 100,  # Convert to percentage
+                    name='IV-HV Spread',
+                    marker=dict(color='rgba(0, 255, 0, 0.3)')
+                ),
+                row=2, col=1
+            )
+        else:
+            logger.warning("IV_HV_Spread column not found in iv_hv_data")
+        
+        # Update layout
+        fig.update_layout(
+            height=400,
+            margin=dict(l=0, r=0, t=40, b=0),
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        
+        # Add zero line for the spread
+        fig.add_hline(
+            y=0, 
+            line=dict(color="black", width=1, dash="dash"),
+            row=2, col=1
+        )
+        
+        logger.info("Successfully created volatility chart")
+        return fig
+        
+    except Exception as e:
+        logger.error(f"Error creating volatility chart: {str(e)}")
+        logger.error(traceback.format_exc())
+        
+        # Return a simple error chart
         fig = go.Figure()
         fig.add_annotation(
             x=0.5,
             y=0.5,
-            text="Volatility data not available",
+            text=f"Error creating volatility chart: {str(e)}",
             showarrow=False,
-            font=dict(size=20)
+            font=dict(size=16)
         )
         
         fig.update_layout(
-            title="Implied vs Historical Volatility",
+            title="Implied vs Historical Volatility (Error)",
             height=400,
             margin=dict(l=0, r=0, t=40, b=0)
         )
         
         return fig
-    
-    # Create subplot grid with shared x-axis
-    fig = make_subplots(
-        rows=2, 
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.03,
-        row_heights=[0.7, 0.3],
-        subplot_titles=("Implied vs Historical Volatility", "IV-HV Spread")
-    )
-    
-    # Add historical volatility
-    fig.add_trace(
-        go.Scatter(
-            x=iv_hv_data.index,
-            y=iv_hv_data['HV'] * 100,  # Convert to percentage
-            mode='lines',
-            name='Historical Volatility',
-            line=dict(color='blue', width=2)
-        ),
-        row=1, col=1
-    )
-    
-    # Add implied volatility
-    fig.add_trace(
-        go.Scatter(
-            x=iv_hv_data.index,
-            y=iv_hv_data['IV'] * 100,  # Convert to percentage
-            mode='lines',
-            name='Implied Volatility',
-            line=dict(color='red', width=2)
-        ),
-        row=1, col=1
-    )
-    
-    # Add IV-HV spread as a bar chart
-    fig.add_trace(
-        go.Bar(
-            x=iv_hv_data.index,
-            y=iv_hv_data['IV_HV_Spread'] * 100,  # Convert to percentage
-            name='IV-HV Spread',
-            marker=dict(color='rgba(0, 255, 0, 0.3)')
-        ),
-        row=2, col=1
-    )
-    
-    # Update layout
-    fig.update_layout(
-        height=400,
-        margin=dict(l=0, r=0, t=40, b=0),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
-    )
-    
-    # Add zero line for the spread
-    fig.add_hline(
-        y=0, 
-        line=dict(color="black", width=1, dash="dash"),
-        row=2, col=1
-    )
-    
-    return fig
 
 def calculate_option_greeks(option, stock_price, risk_free_rate=0.05):
     """
