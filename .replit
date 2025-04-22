@@ -20,6 +20,10 @@ author = "agent"
 task = "workflow.run"
 args = "Streamlit Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Static Site Server"
+
 [[workflows.workflow]]
 name = "Streamlit Server"
 author = "agent"
@@ -35,6 +39,29 @@ task = "shell.exec"
 args = "streamlit run main.py --server.port 5000"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "Static Site Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd static_site && python test_locally.py"
+waitForPort = 5001
+
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3000
+
+[[ports]]
+localPort = 8000
+externalPort = 8000

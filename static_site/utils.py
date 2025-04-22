@@ -1,117 +1,9 @@
-import os
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-from datetime import datetime, timedelta
-from apscheduler.schedulers.background import BackgroundScheduler
-import time
-import random
-import traceback
-import logging
+from datetime import datetime
 
-# Setup logging
-logger = logging.getLogger(__name__)
-
-# Import custom modules
-# Using relative imports to avoid circular dependencies
-# These imports are executed when the function is called
-scheduler = None
-
-def initialize_scheduler():
-    """Initialize the background scheduler for cache refresh and model retraining"""
-    global scheduler
-    
-    # Ensure clean state - shutdown any existing scheduler
-    if scheduler is not None:
-        if scheduler.running:
-            logger.info("Shutting down existing scheduler")
-            scheduler.shutdown(wait=False)
-        scheduler = None
-        
-    # Create new scheduler
-    scheduler = BackgroundScheduler()
-    logger.info("Created new scheduler")
-    
-    # Generate unique job IDs using timestamp and random string
-    import random
-    import string
-    random_string = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-    job_id_suffix = f"{int(time.time())}_{random_string}"
-    
-    # Add jobs with unique IDs
-    cache_job_id = f'cache_refresh_{job_id_suffix}'
-    model_job_id = f'model_check_{job_id_suffix}'
-    
-    # Add job for cache refresh
-    scheduler.add_job(
-        refresh_cache_for_popular_tickers,
-        'interval',
-        hours=1,
-        id=cache_job_id
-    )
-    logger.info(f"Added cache refresh job with ID: {cache_job_id}")
-    
-    # Add job for model checking
-    scheduler.add_job(
-        check_model_drift,
-        'interval',
-        days=1,
-        id=model_job_id
-    )
-    logger.info(f"Added model check job with ID: {model_job_id}")
-    
-    # Start the scheduler
-    scheduler.start()
-    logger.info("Started scheduler")
-    
-    logger.info("Scheduler initialization complete")
-
-def refresh_cache_for_popular_tickers():
-    """Refresh cache for popular tickers on a schedule"""
-    try:
-        # Import here to avoid circular imports
-        import data_fetcher as df
-        
-        # List of popular tickers to keep fresh
-        popular_tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "META", "TSLA", "NVDA", "SPY", "QQQ"]
-        
-        # Randomize order to distribute API calls
-        random.shuffle(popular_tickers)
-        
-        for ticker in popular_tickers:
-            try:
-                # Add jitter to avoid rate limits
-                time.sleep(random.uniform(1, 3))
-                
-                # Refresh price history
-                df.get_price_history(ticker, force_refresh=True)
-                
-                # Refresh options chain
-                df.get_options_chain(ticker, force_refresh=True)
-                
-                # Refresh fundamentals
-                df.get_fundamentals(ticker, force_refresh=True)
-                
-                print(f"Successfully refreshed cache for {ticker}")
-            except Exception as e:
-                print(f"Error refreshing cache for {ticker}: {str(e)}")
-    except Exception as e:
-        print(f"Error in cache refresh job: {str(e)}")
-        traceback.print_exc()
-
-def check_model_drift():
-    """Check for model drift and retrain if necessary"""
-    try:
-        # Import here to avoid circular imports
-        import analysis as al
-        
-        # Check if model should be retrained
-        model, accuracy = al.load_or_train_model(force_retrain=False)
-        
-        print(f"Model check complete. Current accuracy: {accuracy:.4f}")
-    except Exception as e:
-        print(f"Error in model drift check: {str(e)}")
-        traceback.print_exc()
+# In the stlite version, we don't need the scheduler functionality
 
 def plot_price_history(price_history, ticker):
     """Create an interactive price chart with volume"""
@@ -199,14 +91,10 @@ def plot_price_history(price_history, ticker):
 def plot_volatility(iv_hv_data):
     """Create a volatility comparison chart using subplots"""
     from plotly.subplots import make_subplots
-    import logging
-    
-    logger = logging.getLogger(__name__)
     
     try:
         if iv_hv_data is None:
             # Create an empty chart with a message
-            logger.warning("Volatility data is None, creating empty chart")
             fig = go.Figure()
             fig.add_annotation(
                 x=0.5,
@@ -224,16 +112,10 @@ def plot_volatility(iv_hv_data):
             
             return fig
         
-        # Log the structure of the data for debugging
-        logger.info(f"IV-HV data shape: {iv_hv_data.shape}, columns: {list(iv_hv_data.columns)}")
-        logger.info(f"IV-HV data index type: {type(iv_hv_data.index)}")
-        
         # Check if we have IV data - determine if we need one or two plots
         has_iv_data = 'IV' in iv_hv_data.columns and not iv_hv_data['IV'].isna().all()
         has_hv_data = 'HV' in iv_hv_data.columns and not iv_hv_data['HV'].isna().all()
         has_spread_data = 'IV_HV_Spread' in iv_hv_data.columns and not iv_hv_data['IV_HV_Spread'].isna().all()
-        
-        logger.info(f"Data availability - IV: {has_iv_data}, HV: {has_hv_data}, Spread: {has_spread_data}")
         
         if has_iv_data and has_hv_data:
             # We have both IV and HV data - create a comparison chart with both subplots
@@ -249,7 +131,7 @@ def plot_volatility(iv_hv_data):
             # Clean HV data
             hv_values = iv_hv_data['HV'].copy()
             hv_values = hv_values.replace([np.inf, -np.inf], np.nan)
-            iv_hv_data['HV_clean'] = hv_values.fillna(method='ffill').fillna(method='bfill')
+            iv_hv_data['HV_clean'] = hv_values.ffill().bfill()
             
             # Add historical volatility
             fig.add_trace(
@@ -266,7 +148,7 @@ def plot_volatility(iv_hv_data):
             # Clean IV data
             iv_values = iv_hv_data['IV'].copy()
             iv_values = iv_values.replace([np.inf, -np.inf], np.nan)
-            iv_hv_data['IV_clean'] = iv_values.fillna(method='ffill').fillna(method='bfill')
+            iv_hv_data['IV_clean'] = iv_values.ffill().bfill()
             
             # Add implied volatility
             fig.add_trace(
@@ -284,7 +166,7 @@ def plot_volatility(iv_hv_data):
             if has_spread_data:
                 spread_values = iv_hv_data['IV_HV_Spread'].copy()
                 spread_values = spread_values.replace([np.inf, -np.inf], np.nan)
-                iv_hv_data['IV_HV_Spread_clean'] = spread_values.fillna(method='ffill').fillna(method='bfill')
+                iv_hv_data['IV_HV_Spread_clean'] = spread_values.ffill().bfill()
             else:
                 iv_hv_data['IV_HV_Spread_clean'] = iv_hv_data['IV_clean'] - iv_hv_data['HV_clean']
             
@@ -332,7 +214,7 @@ def plot_volatility(iv_hv_data):
             # Clean HV data
             hv_values = iv_hv_data['HV'].copy()
             hv_values = hv_values.replace([np.inf, -np.inf], np.nan)
-            clean_hv = hv_values.fillna(method='ffill').fillna(method='bfill')
+            clean_hv = hv_values.ffill().bfill()
             
             # Add historical volatility
             fig.add_trace(
@@ -345,80 +227,52 @@ def plot_volatility(iv_hv_data):
                 )
             )
             
-            # Add note about missing IV data
-            fig.add_annotation(
-                x=0.5,
-                y=0.9,
-                xref="paper",
-                yref="paper",
-                text="Implied Volatility data not available - showing Historical Volatility only",
-                showarrow=False,
-                font=dict(size=12)
+            # Update layout
+            fig.update_layout(
+                title="Historical Volatility",
+                xaxis_title="Date",
+                yaxis_title="Volatility (%)",
+                height=400,
+                margin=dict(l=0, r=0, t=40, b=0)
             )
             
             # Set y-axis range
             fig.update_yaxes(
-                title="Historical Volatility (%)",
                 range=[0, clean_hv.max() * 100 * 1.1]
             )
             
-            # Set title
-            fig.update_layout(title="Historical Volatility")
-            
         else:
-            # No volatility data at all
+            # No volatility data available
             fig = go.Figure()
             fig.add_annotation(
                 x=0.5,
                 y=0.5,
-                text="No volatility data available for this ticker",
+                text="Volatility data not available",
                 showarrow=False,
-                font=dict(size=16)
+                font=dict(size=20)
             )
             
-            fig.update_layout(title="Volatility Analysis")
+            fig.update_layout(
+                title="Volatility Analysis",
+                height=400,
+                margin=dict(l=0, r=0, t=40, b=0)
+            )
         
-        # Common layout settings
-        fig.update_layout(
-            height=400,
-            margin=dict(l=0, r=0, t=40, b=0),
-            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-            hovermode="x unified"  # Shows all data at the same x-coordinate on hover
-        )
-        
-        logger.info("Successfully created volatility chart")
         return fig
         
     except Exception as e:
-        logger.error(f"Error creating volatility chart: {str(e)}")
-        logger.error(traceback.format_exc())
-        
-        # Return a simple error chart with more details for debugging
+        # Create a fallback figure in case of any error
         fig = go.Figure()
         fig.add_annotation(
             x=0.5,
             y=0.5,
-            text=f"Error creating volatility chart: {str(e)}",
+            text="Error generating volatility chart",
             showarrow=False,
-            font=dict(size=16)
+            font=dict(size=20)
         )
         
-        if iv_hv_data is not None:
-            # Add additional info about the data that caused the error
-            try:
-                data_info = f"Columns: {list(iv_hv_data.columns)}, Shape: {iv_hv_data.shape}"
-                fig.add_annotation(
-                    x=0.5,
-                    y=0.4,
-                    text=data_info,
-                    showarrow=False,
-                    font=dict(size=12)
-                )
-            except:
-                pass
-        
         fig.update_layout(
-            title="Implied vs Historical Volatility (Error)",
+            title="Volatility Analysis",
             height=400,
             margin=dict(l=0, r=0, t=40, b=0)
         )
@@ -430,27 +284,27 @@ def calculate_option_greeks(option, stock_price, risk_free_rate=0.05):
     Calculate option greeks (simplified approach).
     In production, you would use specialized libraries or APIs for this.
     """
-    # This is a placeholder for demonstration
-    # In a real application, you would use a proper option pricing model
+    # For stlite, we'll just return simplified values
+    # In a real application, you'd use proper models like Black-Scholes
     
+    # Extract option details
     strike = option['strike']
-    premium = option['lastPrice']
     implied_vol = option['impliedVolatility']
-    days_to_expiry = 30  # Approximation
     
-    # Simplified delta calculation
-    if option['type'] == 'call':
-        delta = 0.5 + 0.5 * (stock_price - strike) / (stock_price * implied_vol * np.sqrt(days_to_expiry/365))
-    else:  # put
-        delta = -0.5 - 0.5 * (stock_price - strike) / (stock_price * implied_vol * np.sqrt(days_to_expiry/365))
+    # Calculate simple delta
+    delta = 0.5  # Default at-the-money value
     
-    # Clip delta to reasonable range
-    delta = max(min(delta, 1.0), -1.0)
+    # Adjust delta based on moneyness
+    moneyness = stock_price / strike
+    if moneyness > 1.05:  # Deep in-the-money
+        delta = 0.8
+    elif moneyness < 0.95:  # Deep out-of-the-money
+        delta = 0.2
     
-    # Other greeks - these are very simplified approximations
-    gamma = 0.1  # Placeholder
-    theta = -premium * 0.01  # Rough approximation of daily time decay
-    vega = premium * 0.1  # Rough approximation
+    # Simple approximations for other greeks
+    gamma = 0.05  # Higher for ATM options
+    theta = -0.01 * stock_price  # Negative, higher for higher prices
+    vega = 0.1 * stock_price  # Higher for higher prices
     
     return {
         'delta': delta,
@@ -458,5 +312,3 @@ def calculate_option_greeks(option, stock_price, risk_free_rate=0.05):
         'theta': theta,
         'vega': vega
     }
-
-## file_path: cache/.gitkeep
