@@ -1,76 +1,70 @@
-# Options Analysis App - Static Website
+# Options Analysis App - Vercel Deployment
 
-This directory contains a static website version of the Options Analysis application that can be deployed to GitHub Pages.
+This directory contains a version of the Options Analysis application optimized for Vercel deployment.
 
 ## What is this?
 
-The static website version uses [Stlite](https://github.com/whitphx/stlite), which is a port of Streamlit that runs entirely in the browser without requiring a server. This allows you to deploy the app to GitHub Pages or any other static site hosting service.
+This is a deployment-ready version of the Options Analysis app that uses FastAPI to serve a complete client-side application. The application uses demo data generated on the server side to demonstrate options analysis and strategy recommendation features.
 
-## How to Deploy to GitHub Pages
+## How to Deploy to Vercel
 
-1. Create a new GitHub repository for this project.
+1. Sign up for a [Vercel account](https://vercel.com/signup) if you don't have one already.
 
-2. Initialize a git repository in this directory:
+2. Install the Vercel CLI (optional):
+   ```
+   npm install -g vercel
+   ```
+
+3. Deploy using the Vercel CLI:
    ```
    cd static_site
-   git init
-   git add .
-   git commit -m "Initial commit"
+   vercel
    ```
+   
+   Or simply connect your GitHub repository to Vercel:
+   - Push this code to a GitHub repository
+   - Import the repository in the Vercel dashboard
+   - Vercel will automatically detect the project configuration
 
-3. Add your GitHub repository as a remote and push:
-   ```
-   git remote add origin https://github.com/yourusername/your-repo-name.git
-   git branch -M main
-   git push -u origin main
-   ```
-
-4. Enable GitHub Pages in your repository settings:
-   - Go to your repository on GitHub
-   - Navigate to "Settings" > "Pages"
-   - Under "Source", select "main" branch and the "/ (root)" folder
-   - Click "Save"
-
-5. After a few minutes, your site will be available at `https://yourusername.github.io/your-repo-name/`
+4. After a few minutes, your app will be available at your Vercel URL (`https://your-project-name.vercel.app`).
 
 ## File Structure
 
-- `index.html` - The main Stlite HTML file that loads the Streamlit app in the browser
-- `main_stlite.py` - The main Python file for the Streamlit app (adapted for Stlite)
-- `data_fetcher_browser.py` - Browser-compatible module with simulated data (no yfinance dependency)
+- `api/` - FastAPI backend code for serving data
+  - `index.py` - Main API entry point for Vercel Serverless Functions
+- `index.html` - The main HTML file for the client-side application
+- `data_fetcher_browser.py` - Module that provides simulated stock and options data
 - `analysis.py` - Module for analyzing options data
 - `strategist.py` - Module for generating strategy recommendations
 - `utils.py` - Utility functions for plotting and data manipulation
-- `model.pkl` - Machine learning model file used for options prediction
+- `model.pkl` - Machine learning model file for options prediction
+- `requirements.txt` - Python dependencies for Vercel
+- `vercel.json` - Configuration file for Vercel deployment
 
-## Browser Compatibility
+## Key Features
 
-The static site uses a browser-compatible data fetcher that generates simulated data for demonstration purposes. This avoids the need for server-side API calls and resolves the dependency issues with packages like `yfinance` that don't have pure Python wheels for WebAssembly.
-
-### Key features of the browser version:
-
-- Simulated stock data for popular tickers (AAPL, MSFT, GOOGL, AMZN, etc.)
-- Realistic options chain generation with strike prices, premiums, and volatility smile 
-- Machine learning model still works with the simulated data
-- All interface features and visualizations work as in the full version
+- **Client-Side Application**: The HTML/JavaScript frontend provides a responsive user interface.
+- **FastAPI Backend**: The API endpoints deliver simulated market data and options analysis.
+- **Demo Data Generation**: Realistic stock price history, options chains, and fundamentals are generated for demonstration purposes.
+- **Interactive Charts**: Uses Plotly.js to create interactive price charts, payoff diagrams, and volatility analysis.
+- **Strategy Recommendations**: Provides options trading strategy recommendations based on market outlook and risk tolerance.
 
 ## Limitations
 
-The static website version has some limitations compared to the full server version:
+This demo version has some limitations compared to the full server version:
 
-1. **Uses simulated data** - not connected to real market data
-2. Slower performance - all processing happens in the browser
-3. Limited memory - large datasets may cause browser performance issues
-4. No background jobs - features like scheduled cache refresh are not available
+1. **Uses simulated data** - not connected to real market data sources
+2. No data caching - fresh data is generated on each request
+3. Limited ticker support - only popular tickers are included in the demo
+4. No user authentication or persisted settings
 
 ## Customizing
 
-You can customize the app by modifying the Python files. After making changes, simply update your repository:
+You can customize the app by modifying the HTML, JavaScript, and Python files. Key areas for customization:
 
-```
-git add .
-git commit -m "Update app"
-git push
-```
+- Update the stock tickers and simulated data in `data_fetcher_browser.py`
+- Modify the UI by editing the HTML and CSS in `index.html`
+- Adjust strategy recommendations and analysis algorithms
+- Add new features to the FastAPI backend
 
-GitHub Pages will automatically update your site with the new changes.
+After making changes, deploy to Vercel again to update your live application.
