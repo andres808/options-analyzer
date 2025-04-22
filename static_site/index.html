@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Options Analysis & Strategy Recommender</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.40.0/build/stlite.css">
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.40.0/build/stlite.js"></script>
+  <script>
+    // Configure the streamlit app with modules
+    stlite.mount({
+      requirements: [
+        "streamlit",
+        "pandas",
+        "numpy",
+        "plotly",
+        "yfinance",
+        "scikit-learn",
+        "joblib"
+      ],
+      entrypoint: "main_stlite.py",
+      files: {
+        // We'll load app files from the file system
+        "main_stlite.py": { url: "./main_stlite.py" },
+        "data_fetcher.py": { url: "./data_fetcher.py" },
+        "analysis.py": { url: "./analysis.py" },
+        "strategist.py": { url: "./strategist.py" },
+        "utils.py": { url: "./utils.py" },
+        "model.pkl": { url: "./model.pkl" }
+      }
+    }, document.getElementById("root"));
+  </script>
+</body>
+</html>
