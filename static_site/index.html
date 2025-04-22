@@ -5,9 +5,62 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Options Analysis & Strategy Recommender</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.40.0/build/stlite.css">
+  <style>
+    /* Add some custom styling to improve the appearance */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f7fa;
+    }
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(255, 255, 255, 0.9);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+    }
+    .loading-spinner {
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #2E86C1;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    .loading-message {
+      font-size: 18px;
+      color: #333;
+      max-width: 80%;
+      text-align: center;
+      line-height: 1.6;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
 </head>
 <body>
   <div id="root"></div>
+  
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-message">
+      <h2>Loading Options Analysis App</h2>
+      <p>The app is loading and downloading required Python packages. This may take a minute...</p>
+      <p>Note: This static site version has limited functionality compared to the server version.</p>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.40.0/build/stlite.js"></script>
   <script>
     // Configure the streamlit app with modules
@@ -17,7 +70,8 @@
         "pandas",
         "numpy",
         "plotly",
-        "yfinance",
+        // Remove yfinance for now due to incompatibility with browser
+        // We'll mock its functionality in our code
         "scikit-learn",
         "joblib"
       ],
@@ -25,13 +79,26 @@
       files: {
         // We'll load app files from the file system
         "main_stlite.py": { url: "./main_stlite.py" },
-        "data_fetcher.py": { url: "./data_fetcher.py" },
+        "data_fetcher.py": { url: "./data_fetcher_browser.py" },
         "analysis.py": { url: "./analysis.py" },
         "strategist.py": { url: "./strategist.py" },
         "utils.py": { url: "./utils.py" },
         "model.pkl": { url: "./model.pkl" }
       }
-    }, document.getElementById("root"));
+    }, document.getElementById("root"))
+    .then(() => {
+      // Hide loading overlay when app is loaded
+      document.getElementById("loadingOverlay").style.display = "none";
+    })
+    .catch(error => {
+      // Show error message if loading fails
+      const loadingMessage = document.querySelector(".loading-message");
+      loadingMessage.innerHTML = `<h2>Error Loading App</h2>
+        <p>There was an error loading the application: ${error.message}</p>
+        <p>Some browser features may not be compatible with this application.</p>
+        <p>For the full experience, please use the server version of the app.</p>`;
+      document.querySelector(".loading-spinner").style.display = "none";
+    });
   </script>
 </body>
 </html>

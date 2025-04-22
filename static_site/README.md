@@ -37,17 +37,28 @@ The static website version uses [Stlite](https://github.com/whitphx/stlite), whi
 
 - `index.html` - The main Stlite HTML file that loads the Streamlit app in the browser
 - `main_stlite.py` - The main Python file for the Streamlit app (adapted for Stlite)
-- `data_fetcher.py` - Module for fetching stock and options data
+- `data_fetcher_browser.py` - Browser-compatible module with simulated data (no yfinance dependency)
 - `analysis.py` - Module for analyzing options data
 - `strategist.py` - Module for generating strategy recommendations
 - `utils.py` - Utility functions for plotting and data manipulation
-- `model.pkl` - Machine learning model file (placeholder in static version)
+- `model.pkl` - Machine learning model file used for options prediction
+
+## Browser Compatibility
+
+The static site uses a browser-compatible data fetcher that generates simulated data for demonstration purposes. This avoids the need for server-side API calls and resolves the dependency issues with packages like `yfinance` that don't have pure Python wheels for WebAssembly.
+
+### Key features of the browser version:
+
+- Simulated stock data for popular tickers (AAPL, MSFT, GOOGL, AMZN, etc.)
+- Realistic options chain generation with strike prices, premiums, and volatility smile 
+- Machine learning model still works with the simulated data
+- All interface features and visualizations work as in the full version
 
 ## Limitations
 
 The static website version has some limitations compared to the full server version:
 
-1. No data caching - all data is fetched fresh every time the app is loaded or refreshed
+1. **Uses simulated data** - not connected to real market data
 2. Slower performance - all processing happens in the browser
 3. Limited memory - large datasets may cause browser performance issues
 4. No background jobs - features like scheduled cache refresh are not available

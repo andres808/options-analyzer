@@ -33,10 +33,13 @@ based on market conditions and your risk tolerance.
 """)
 
 # Add a note about stlite version
-st.info("""
-This is a static web version of the Options Analysis app running on stlite.
-Some features may have limited functionality compared to the full server version.
-Data is not cached when running in the browser.
+st.warning("""
+⚠️ **DEMO MODE** - This is a static web version running in your browser.
+
+This version uses simulated stock data to demonstrate functionality without requiring server-side API calls.
+For real data analysis, please use the full server version of the application.
+
+The interface and features are identical to the server version, but all data is simulated.
 """)
 
 # Sidebar inputs
@@ -288,5 +291,6 @@ except Exception as e:
 
 # Footer
 st.markdown("---")
-st.caption("Data provided by Yahoo Finance. Updated regularly. Not financial advice.")
-st.caption("Static website version powered by Stlite")
+st.caption("Demo version for GitHub Pages deployment. Not financial advice.")
+st.caption("All data shown is simulated for demonstration purposes only.")
+st.caption("Static website version powered by [Stlite](https://github.com/whitphx/stlite) | [GitHub Repo](https://github.com/yourusername/options-analysis)")
